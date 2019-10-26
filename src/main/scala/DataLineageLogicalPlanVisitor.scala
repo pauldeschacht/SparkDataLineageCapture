@@ -1,6 +1,7 @@
 package io.nomad47
 
 import org.apache.spark.sql.catalyst.plans.logical._
+import org.apache.spark.sql.execution.command.CreateViewCommand
 import org.apache.spark.sql.execution.datasources.{CreateTempViewUsing, HadoopFsRelation, InsertIntoHadoopFsRelationCommand, LogicalRelation}
 import org.apache.spark.sql.execution.streaming.ConsoleRelation
 import org.apache.spark.sql.sources.BaseRelation
@@ -37,7 +38,8 @@ trait DataLineageLogicalPlanVisitor[T]  {
     case p: RepartitionByExpression => visitRepartitionByExpr(p)
     case p: Sample => visitSample(p)
     case p: ScriptTransformation => visitScriptTransform(p)
-    case p: Sort => visit(p)
+    case p: Sort => visitSort(p)
+    case p: SubqueryAlias => visitSubqueryAlias(p)
     case p: Union => visitUnion(p)
     case p: Window => visitWindow(p)
     case p: CreateTempViewUsing => visitCreateTempViewUsing(p)
@@ -63,8 +65,10 @@ trait DataLineageLogicalPlanVisitor[T]  {
   def visitSample(sample: Sample) : T
   def visitScriptTransform(scriptTransformation: ScriptTransformation) : T
   def visitSort(sort : Sort) : T
+  def visitSubqueryAlias(alias: SubqueryAlias) : T
   def visitUnion(union: Union) : T
   def visitWindow(window: Window) : T
+  def visitCreateViewCommand(createViewCommand: CreateViewCommand) : T
   def visitCreateTempViewUsing(createTempViewUsing: CreateTempViewUsing) : T
   def visitInsertIntoHadoopFsRelationCommand(insertIntoHadoopFsRelationCommand: InsertIntoHadoopFsRelationCommand) : T
   def visitCommand(command: Command) : T

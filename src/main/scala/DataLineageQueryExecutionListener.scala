@@ -9,7 +9,8 @@ class DataLineageQueryExecutionListener extends QueryExecutionListener {
 
   override def onSuccess(functionName: String, qe: QueryExecution, duration: Long) : Unit = {
     println(s"onSuccess function ${functionName}")
-    /*
+    if (functionName != "head") {
+      /*
     qe.debug.codegen()
     println("==============")
     println(s"Schema executed plan : ${qe.executedPlan.schemaString}")
@@ -28,19 +29,22 @@ class DataLineageQueryExecutionListener extends QueryExecutionListener {
     println(qe.executedPlan.toJSON)
     println("==============")
     */
-   val lineage = process.visit(qe.analyzed)
-    val result = JObject(
-      JField("user", JString(qe.sparkSession.sparkContext.sparkUser)) ::
-      JField("appName", JString(qe.sparkSession.sparkContext.appName)) ::
-      JField("appId", JString(qe.sparkSession.sparkContext.applicationId)) ::
-      JField("appAttemptId", JString(qe.sparkSession.sparkContext.applicationAttemptId match {
-          case Some(name) => name
-          case _ => ""
-      })) ::
-      JField("lineage", lineage) ::
-      Nil
-    )
-    println(org.json4s.jackson.compactJson(result))
+      // TODO: put in Future for async processing
+      val lineage = process.visit(qe.analyzed)
+      val result = JObject(
+        JField("user", JString(qe.sparkSession.sparkContext.sparkUser)) ::
+          JField("appName", JString(qe.sparkSession.sparkContext.appName)) ::
+          JField("appId", JString(qe.sparkSession.sparkContext.applicationId)) ::
+          JField("appAttemptId", JString(qe.sparkSession.sparkContext.applicationAttemptId match {
+            case Some(name) => name
+            case _ => ""
+          })) ::
+          JField("lineage", lineage) ::
+          Nil
+      )
+      // TODO: save to HDFS
+      println(org.json4s.jackson.compactJson(result))
+    }
   }
   override def onFailure(functionName: String, qe: QueryExecution, ex : Exception) : Unit  = {
     println(s"onFailure function ${functionName}")

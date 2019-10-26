@@ -1,14 +1,15 @@
 package io.nomad47
 
+import org.apache.spark.sql.catalyst.catalog.CatalogTable
 import org.json4s.JsonAST.{JField, _}
 import org.json4s.jackson.JsonMethods.parse
 import org.apache.spark.sql.catalyst.expressions.{Attribute, AttributeSet, Expression, SortOrder}
 import org.apache.spark.sql.catalyst.plans.logical._
+import org.apache.spark.sql.execution.command.CreateViewCommand
 import org.apache.spark.sql.execution.datasources.{CreateTempViewUsing, InsertIntoHadoopFsRelationCommand}
 import org.apache.spark.sql.execution.datasources._
 import org.apache.spark.sql.execution.streaming.ConsoleRelation
 import org.apache.spark.sql.sources.{BaseRelation, DataSourceRegister}
-
 
 // FIXME: avoid the struct --> json --> string --> json  (currently using the parse function)
 
@@ -37,9 +38,9 @@ class RelationJson extends RelationVisitor[JValue] {
   override def default(r: BaseRelation): JValue = {
     JObject(
       JField("class" , JString(r.getClass.toString)) ::
-        JField("schema", parse(r.schema.json)) ::
-        JField("estimatedSize", JInt(r.sizeInBytes)) ::
-        Nil
+      JField("schema", parse(r.schema.json)) ::
+      JField("estimatedSize", JInt(r.sizeInBytes)) ::
+      Nil
     )
   }
 }
@@ -47,6 +48,11 @@ class RelationJson extends RelationVisitor[JValue] {
 class DataLineageJson extends DataLineageLogicalPlanVisitor[JValue] {
 
   def relationJson = new RelationJson;
+
+  override def visit(p: LogicalPlan): JValue = {
+    println(p.getClass.toString)
+    super.visit(p)
+  }
 
   def processExpression(e : Expression) : JValue = parse(e.toJSON)
   def processExpression(e : Option[Expression]): JValue = e match {
@@ -60,6 +66,18 @@ class DataLineageJson extends DataLineageLogicalPlanVisitor[JValue] {
   def processAttributes(attributes : Seq[Attribute]) : JArray = {
     JArray(attributes.map(attribute => {
       processExpression(attribute) ++ JObject(JField("name", JString(attribute.name)))} ).toList)
+  }
+  def processCatalogTable(catalogTable: CatalogTable) : JValue = {
+    JObject(
+      JField("identifier", JString(catalogTable.identifier.identifier)) ::
+        JField("storage", JString(catalogTable.storage.toString)) ::   // FIXME
+        JField("owner", JString(catalogTable.owner)) ::   // FIXME
+        Nil
+    )
+  }
+  def processCatalogTable(catalogTable: Option[CatalogTable]) : JValue = catalogTable match {
+    case Some(table) => processCatalogTable(table)
+    case _ => JNull
   }
   override def visitAggregate(aggregate: Aggregate) : JValue = {
     JObject(JField("class", JString(aggregate.getClass.toString)))
@@ -122,7 +140,13 @@ class DataLineageJson extends DataLineageLogicalPlanVisitor[JValue] {
     )
   }
   override def visitLogicalRelation(logicalRelation: LogicalRelation) : JValue = {
-    relationJson.visit(logicalRelation.relation)
+    JObject(
+      JField("class", JString(logicalRelation.getClass.toString)) ::
+      JField("streaming", JBool(logicalRelation.isStreaming)) ::
+      JField("catalog", processCatalogTable(logicalRelation.catalogTable)) ::
+      JField("relation", relationJson.visit(logicalRelation.relation)) ::
+    Nil
+    )
   }
 
   override def visitPivot(pivot: Pivot) : JValue = {
@@ -175,6 +199,14 @@ class DataLineageJson extends DataLineageLogicalPlanVisitor[JValue] {
       Nil
     )
   }
+  override def visitSubqueryAlias(alias: SubqueryAlias) : JValue = {
+    JObject(
+      JField("class", JString(alias.getClass.toString)) ::
+      JField("alias", JString(alias.alias)) ::
+      JField("child", visit(alias.child)) ::
+      Nil
+    )
+  }
   override def visitUnion(union: Union) : JValue = {
     JObject(
       JField("class", JString(union.getClass.toString)) ::
@@ -187,6 +219,16 @@ class DataLineageJson extends DataLineageLogicalPlanVisitor[JValue] {
       JField("class", JString(window.getClass.toString)) ::
       Nil
     )
+  }
+  override def visitCreateViewCommand(createViewCommand: CreateViewCommand) : JValue = {
+    JObject(
+      JField("class", JString(createViewCommand.getClass.toString)) ::
+      JField("table", JString(createViewCommand.name.identifier)) ::
+      JField("replace", JBool(createViewCommand.replace)) ::
+      JField("child", visit(createViewCommand.child)) ::
+      Nil
+    )
+
   }
   override def visitCreateTempViewUsing(createTempViewUsing: CreateTempViewUsing) : JValue = {
     JObject(
