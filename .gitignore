@@ -25,3 +25,4 @@ project/target/
 target/
 .scala_dependencies
 .worksheet
+spark-warehouse

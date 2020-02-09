@@ -1,11 +1,22 @@
 package io.nomad47
 
 import org.apache.spark.sql.catalyst.plans.logical._
+import org.apache.spark.sql.execution.QueryExecution
 import org.apache.spark.sql.execution.command.CreateViewCommand
 import org.apache.spark.sql.execution.datasources.{CreateTempViewUsing, HadoopFsRelation, InsertIntoHadoopFsRelationCommand, LogicalRelation}
 import org.apache.spark.sql.execution.streaming.ConsoleRelation
 import org.apache.spark.sql.sources.BaseRelation
-import org.apache.spark.sql.execution.datasources.jdbc
+
+import scala.concurrent.{ExecutionContext, Future}
+
+trait DataLineageWriter[T] {
+  def write(lineage: T)(implicit ec: ExecutionContext) : Future[Unit]
+}
+
+trait DataLineageHandler[T] {
+  def onSuccess(functionName: String, qe: QueryExecution, duration: Long): Unit
+  def onFailure(functionName: String, qe: QueryExecution, ex : Exception): Unit
+}
 
 trait RelationVisitor[T] {
   def visit(r: BaseRelation) : T = r match {

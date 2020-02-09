@@ -1,17 +1,59 @@
 package io.nomad47
 
 import org.apache.spark.sql.catalyst.catalog.CatalogTable
-import org.json4s.JsonAST.{JField, _}
-import org.json4s.jackson.JsonMethods.parse
 import org.apache.spark.sql.catalyst.expressions.{Attribute, AttributeSet, Expression, SortOrder}
 import org.apache.spark.sql.catalyst.plans.logical._
+import org.apache.spark.sql.execution.QueryExecution
 import org.apache.spark.sql.execution.command.CreateViewCommand
-import org.apache.spark.sql.execution.datasources.{CreateTempViewUsing, InsertIntoHadoopFsRelationCommand}
-import org.apache.spark.sql.execution.datasources._
+import org.apache.spark.sql.execution.datasources.{CreateTempViewUsing, InsertIntoHadoopFsRelationCommand, _}
 import org.apache.spark.sql.execution.streaming.ConsoleRelation
 import org.apache.spark.sql.sources.{BaseRelation, DataSourceRegister}
+import org.json4s.JsonAST.{JField, _}
+import org.json4s.jackson.JsonMethods.parse
 
-// FIXME: avoid the struct --> json --> string --> json  (currently using the parse function)
+import scala.concurrent.{ExecutionContext, Future}
+
+class DataLineageJsonWriter(filename: String) extends DataLineageWriter[JValue] {
+  def write(j: JValue)(implicit ec: ExecutionContext) : Future[Unit] = Future {
+    val s = org.json4s.jackson.compactJson(j)
+    //TODO: write to HDFS: spark.write.format("json").save(filename)
+  }
+}
+class DataLineageStringWriter extends DataLineageWriter[JValue] {
+  private var s: Option[String] = None
+  def write(j: JValue)(implicit ec: ExecutionContext) : Future[Unit] = Future {
+    s = Some(org.json4s.jackson.compactJson(j))
+  }
+  def json : Option[String] = s
+}
+
+class DataLineageJsonHandler(writer: DataLineageWriter[JValue]) extends DataLineageHandler[JValue] {
+  private lazy val visitor = new DataLineageJson
+  private var futureWriter : Future[Unit] = null
+
+  def onSuccess(functionName: String, qe: QueryExecution, duration: Long) = {
+    if (functionName == "count") {
+      val lineage = visitor.visit(qe.analyzed)
+      val result = JObject(
+        JField("user", JString(qe.sparkSession.sparkContext.sparkUser)) ::
+          JField("appName", JString(qe.sparkSession.sparkContext.appName)) ::
+          JField("appId", JString(qe.sparkSession.sparkContext.applicationId)) ::
+          JField("appAttemptId", JString(qe.sparkSession.sparkContext.applicationAttemptId match {
+            case Some(name) => name
+            case _ => ""
+          })) ::
+          JField("duration", JInt(duration)) ::
+          JField("lineage", lineage) ::
+          Nil)
+      import scala.concurrent.ExecutionContext.Implicits.global
+      futureWriter = writer.write(result)
+    }
+  }
+  def onFailure(functionName: String, qe: QueryExecution, ex : Exception): Unit = {
+    //log error s"${functionName}, ex.toString"
+  }
+  def getWriter(): Future[Unit] = futureWriter
+}
 
 class RelationJson extends RelationVisitor[JValue] {
   override def visitHadoopFsRelation(r: HadoopFsRelation): JValue = {
