@@ -1,9 +1,7 @@
-package io.nomad47
-
 import org.apache.spark.sql.execution.QueryExecution
 import org.apache.spark.sql.util.QueryExecutionListener
 
-class DataLineageQueryExecutionListener[T](handler: DataLineageHandler[T]) extends QueryExecutionListener {
+class DataLineageQueryExecutionListener[T](handler: DataLineageHandler) extends QueryExecutionListener {
   override def onSuccess(functionName: String, qe: QueryExecution, duration: Long) : Unit = {
     handler.onSuccess(functionName, qe, duration)
   }

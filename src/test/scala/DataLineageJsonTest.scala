@@ -1,8 +1,8 @@
-package io.nomad47
-
 import org.apache.spark.sql.SparkSession
+import org.json4s.JsonAST.{JField, JValue}
 import org.scalatest.FunSuite
 
+import scala.io.Source
 import scala.util.Success
 class DataLineageJsonTest extends FunSuite {
 
@@ -10,11 +10,11 @@ class DataLineageJsonTest extends FunSuite {
     SparkSession
       .builder()
       .master("local[*]")
-      .appName("ThothSnapshotTest")
+      .appName("DataLineage Test")
       .getOrCreate()
   }
 
-  val writer = new DataLineageStringWriter
+  val writer = new DataLineageJValueWriter
   val dataLineageJsonHandler = new DataLineageJsonHandler(writer)
   spark.listenerManager.register(new DataLineageQueryExecutionListener(dataLineageJsonHandler))
 
@@ -29,7 +29,15 @@ class DataLineageJsonTest extends FunSuite {
   import scala.concurrent.ExecutionContext.Implicits.global
   val futureWriter = dataLineageJsonHandler.getWriter()
   futureWriter.onComplete{
-    case Success(_) => assert(writer.json.isDefined); println(writer.json.get)
+    case Success(_) => {
+      assert(writer.json.isDefined)
+      val constantLineage = writer.json.get.removeField { case(n,v) => (n == "appId" || n == "duration" || n == "user" || n == "location")}
+
+      import org.json4s.jackson.JsonMethods._
+      val expected: JValue = parse(Source.fromURL(this.getClass.getResource("/expectedJson.json")).getLines.mkString)
+      val constantExpected =expected.removeField { case(n,v) => (n == "appId" || n == "duration" || n == "user" || n == "location")}
+      assert(constantLineage === constantExpected)
+    };
     case _ => assert(false)
   }
 }
