@@ -1,6 +1,7 @@
 package io.nomad48.datective.lineage
 
 import io.nomad48.datective.embedded.EmbeddedHdfsSpark
+import org.apache.commons.lang3.SystemUtils
 import org.apache.spark.sql.DataFrame
 import org.scalatest.BeforeAndAfterAll
 import org.scalatest.funsuite.AnyFunSuite
@@ -13,8 +14,10 @@ class DataLineageTest
     with EmbeddedHdfsSpark {
 
   override def beforeAll(): Unit = {
-    // on Windows, use a tmp folder without spaces
-    startHdfs(new File("c:\\tmp"))
+    if (SystemUtils.IS_OS_WINDOWS) {
+      // on Windows, use a tmp folder without spaces
+      startHdfs(new File("c:\\tmp"))
+    }
     copyFromLocal(
       "src/it/resources/insurance_sample.csv.gz",
       "/insurance_sample.csv.gz"
