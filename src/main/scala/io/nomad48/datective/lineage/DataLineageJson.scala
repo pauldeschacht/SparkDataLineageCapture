@@ -40,10 +40,10 @@ import org.json4s.jackson.JsonMethods.parse
 class RelationJson extends RelationVisitor[JValue] {
   override def visitHadoopFsRelation(r: HadoopFsRelation): JValue = {
     JObject(
-      JField("op", JString("HadoopRead")) ::
+      JField("op", JString("hadoopRead")) ::
         JField(
           "location",
-          JArray(r.location.inputFiles.map(i => JString(i.toString)).toList)
+          JArray(r.location.inputFiles.map(i => JString(i)).toList)
         ) ::
         JField(
           "format",
@@ -86,26 +86,31 @@ class RelationJson extends RelationVisitor[JValue] {
   * Implementation of ExpressionVisitor to transform the expressions into JSON
   */
 class ExpressionJson extends ExpressionVisitor[JValue] {
-  override def visitLiteral(literal: Literal): JValue = {
+  override def visitLiteral(expression: Literal): JValue = {
     JObject(
       JField("op", JString("literal")) ::
-        JField("type", JString(literal.dataType.toString())) ::
-        JField("value", JString(literal.value.toString)) ::
+        JField("type", JString(expression.dataType.toString)) ::
+        JField("value", JString(expression.value.toString)) ::
+        JField("sql", JString(expression.sql)) ::
         Nil
     )
   }
   override def visitNamedExpression(expression: NamedExpression): JValue = {
     JObject(
-      JField("alias", JString(expression.qualifiedName)) ::
-        JField("type", JString(expression.dataType.toString())) ::
+      JField("op", JString("namedExpression")) ::
+        JField("alias", JString(expression.qualifiedName)) ::
+        JField("type", JString(expression.dataType.toString)) ::
+        JField("sql", JString(expression.sql)) ::
         JField("children", JArray(expression.children.map(visit).toList)) ::
         Nil
     )
   }
-  override def visitCount(count: Count): JValue = {
+  override def visitCount(expression: Count): JValue = {
     JObject(
       JField("op", JString("count")) ::
-        JField("children", JArray(count.children.map(visit).toList)) ::
+        JField("type", JString(expression.dataType.toString)) ::
+        JField("sql", JString(expression.sql)) ::
+        JField("children", JArray(expression.children.map(visit).toList)) ::
         Nil
     )
   }
@@ -114,24 +119,30 @@ class ExpressionJson extends ExpressionVisitor[JValue] {
   ): JValue = {
     JObject(
       JField("op", JString("aggregation")) ::
+        JField("type", JString(expression.dataType.toString)) ::
         JField("mode", JString(expression.mode.toString)) ::
         JField("distinct", JBool(expression.isDistinct)) ::
+        JField("sql", JString(expression.sql)) ::
         JField("children", JArray(expression.children.map(visit).toList)) ::
         Nil
     )
   }
-  override def visitBinaryOperator(operator: BinaryOperator): JValue = {
+  override def visitBinaryOperator(expression: BinaryOperator): JValue = {
     JObject(
-      JField("op", JString(operator.sqlOperator)) ::
-        JField("left", visit(operator.left)) ::
-        JField("right", visit(operator.right)) ::
+      JField("op", JString(expression.sqlOperator)) ::
+        JField("type", JString(expression.dataType.toString)) ::
+        JField("sql", JString(expression.sql)) ::
+        JField("left", visit(expression.left)) ::
+        JField("right", visit(expression.right)) ::
         Nil
     )
   }
-  override def default(e: Expression): JValue = {
+  override def default(expression: Expression): JValue = {
     JObject(
-      JField("type", JString(e.dataType.toString())) ::
-        JField("children", JArray(e.children.map(visit).toList)) ::
+      JField("op", JString("expression")) ::
+        JField("type", JString(expression.dataType.toString)) ::
+        JField("sql", JString(expression.sql)) ::
+        JField("children", JArray(expression.children.map(visit).toList)) ::
         Nil
     )
   }
@@ -146,11 +157,10 @@ class DataLineageJson extends DataLineageLogicalPlanVisitor[JValue] {
 
   private[this] def removeEmpty(value: JValue): JValue = value match {
     case JString("") => JNothing
-    case JArray(items) => {
+    case JArray(items) =>
       val items2 = items map removeEmpty
-      if (items2.size > 0) JArray(items2) else JNothing
-    }
-    case JObject(fields) => {
+      if (items2.nonEmpty) JArray(items2) else JNothing
+    case JObject(fields) =>
       val lst = fields map { case JField(name, value) =>
         JField(name, removeEmpty(value))
       }
@@ -162,12 +172,17 @@ class DataLineageJson extends DataLineageLogicalPlanVisitor[JValue] {
           }
         )
       )
-    }
     case oth => oth
   }
   override def visit(p: LogicalPlan): JValue = {
     removeEmpty(super.visit(p))
   }
+  def processOption(value: Option[_]): JValue = value match {
+    case Some(l: Long) => JInt(l)
+    case Some(i: Int)  => JInt(i)
+    case _             => JNothing
+  }
+
   def processStructType(s: StructType): JValue = {
     JArray(s.fields.map { field =>
       JObject(
@@ -183,7 +198,7 @@ class DataLineageJson extends DataLineageLogicalPlanVisitor[JValue] {
         .map(attribute =>
           JObject(
             JField("name", JString(attribute.name)) ::
-              JField("type", JString(attribute.dataType.toString())) ::
+              JField("type", JString(attribute.dataType.toString)) ::
               Nil
           )
         )
@@ -196,7 +211,7 @@ class DataLineageJson extends DataLineageLogicalPlanVisitor[JValue] {
         .map(attribute =>
           JObject(
             JField("name", JString(attribute.name)) ::
-              JField("type", JString(attribute.dataType.toString())) ::
+              JField("type", JString(attribute.dataType.toString)) ::
               Nil
           )
         )
@@ -219,22 +234,28 @@ class DataLineageJson extends DataLineageLogicalPlanVisitor[JValue] {
     }
   override def visitAggregate(aggregate: Aggregate): JValue = {
     JObject(
-      JField("child", visit(aggregate.child)) ::
-        JField(
-          "groupedBy",
-          JArray(aggregate.groupingExpressions.map(expressionJson.visit).toList)
-        ) ::
+      JField("op", JString("aggregate")) ::
         JField(
           "aggregate",
           JArray(
             aggregate.aggregateExpressions.map(expressionJson.visit).toList
           )
         ) ::
+        JField(
+          "groupedBy",
+          JArray(aggregate.groupingExpressions.map(expressionJson.visit).toList)
+        ) ::
+        JField("child", visit(aggregate.child)) ::
         Nil
     )
   }
   override def visitDistinct(distinct: Distinct): JValue = {
-    JObject(JField("op", JString("distinct")))
+    JObject(
+      JField("op", JString("distinct")) ::
+        JField("maxRows", processOption(distinct.maxRows)) ::
+        JField("child", visit(distinct.child)) ::
+        Nil
+    )
   }
   override def visitExcept(except: Except): JValue = {
     JObject(
@@ -268,7 +289,7 @@ class DataLineageJson extends DataLineageLogicalPlanVisitor[JValue] {
   }
   override def visitGlobalLimit(globalLimit: GlobalLimit): JValue = {
     JObject(
-      JField("op", JString("limit")) ::
+      JField("op", JString("globalLimit")) ::
         JField(
           "limit",
           globalLimit.maxRows match {
@@ -326,7 +347,8 @@ class DataLineageJson extends DataLineageLogicalPlanVisitor[JValue] {
       logicalRelation: LogicalRelation
   ): JValue = {
     JObject(
-      JField("class", JString(logicalRelation.getClass.toString)) ::
+      JField("op", JString("relation")) ::
+        JField("class", JString(logicalRelation.getClass.toString)) ::
         JField("streaming", JBool(logicalRelation.isStreaming)) ::
         JField("catalog", processCatalogTable(logicalRelation.catalogTable)) ::
         JField("relation", relationJson.visit(logicalRelation.relation)) ::
@@ -359,7 +381,7 @@ class DataLineageJson extends DataLineageLogicalPlanVisitor[JValue] {
   override def visitProject(project: Project): JValue = {
     JObject(
       JField("op", JString("project")) ::
-        JField("list", processAttributes(project.output)) ::
+        JField("fields", processAttributes(project.output)) ::
         JField("child", visit(project.child)) ::
         Nil
     )
@@ -404,7 +426,8 @@ class DataLineageJson extends DataLineageLogicalPlanVisitor[JValue] {
       scriptTransformation: ScriptTransformation
   ): JValue = {
     JObject(
-      JField("class", JString(scriptTransformation.getClass.toString)) ::
+      JField("op", JString("scriptTransformation")) ::
+        JField("class", JString(scriptTransformation.getClass.toString)) ::
         Nil
     )
   }
@@ -423,7 +446,8 @@ class DataLineageJson extends DataLineageLogicalPlanVisitor[JValue] {
   }
   override def visitSubqueryAlias(alias: SubqueryAlias): JValue = {
     JObject(
-      JField("class", JString(alias.getClass.toString)) ::
+      JField("op", JString("subQueryAlias")) ::
+        JField("class", JString(alias.getClass.toString)) ::
         JField("alias", JString(alias.alias)) ::
         JField("child", visit(alias.child)) ::
         Nil
@@ -477,7 +501,7 @@ class DataLineageJson extends DataLineageLogicalPlanVisitor[JValue] {
       createTempViewUsing: CreateTempViewUsing
   ): JValue = {
     JObject(
-      JField("op", JString("tempView")) ::
+      JField("op", JString("tempViewUsing")) ::
         JField("table", JString(createTempViewUsing.tableIdent.table)) ::
         JField("replace", JBool(createTempViewUsing.replace)) ::
         JField("global", JBool(createTempViewUsing.global)) ::
@@ -489,7 +513,7 @@ class DataLineageJson extends DataLineageLogicalPlanVisitor[JValue] {
       insertIntoHadoopFsRelationCommand: InsertIntoHadoopFsRelationCommand
   ): JValue = {
     JObject(
-      JField("op", JString("HadoopWrite")) ::
+      JField("op", JString("hadoopWrite")) ::
         JField(
           "output",
           JString(insertIntoHadoopFsRelationCommand.outputPath.toString)
@@ -519,6 +543,9 @@ class DataLineageJson extends DataLineageLogicalPlanVisitor[JValue] {
   }
   override def default(p: LogicalPlan): JValue = p match {
     case _: LogicalPlan =>
-      JObject(JField("class", JString(p.getClass.toString)) :: Nil)
+      JObject(
+        JField("op", JString("logicalPlan")) ::
+          JField("class", JString(p.getClass.toString)) :: Nil
+      )
   }
 }

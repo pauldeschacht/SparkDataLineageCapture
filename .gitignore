@@ -1,5 +1,6 @@
 # Created by Jayesh J.
 
+.bsp
 *.class
 *.log
 *.iml
@@ -26,3 +27,6 @@ target/
 .scala_dependencies
 .worksheet
 spark-warehouse
+
+
+private/*

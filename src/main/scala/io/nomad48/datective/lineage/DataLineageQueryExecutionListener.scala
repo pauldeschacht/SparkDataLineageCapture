@@ -18,6 +18,7 @@ class DataLineageQueryExecutionListener()
     "take",
     "takeSample",
     "takeOrdered",
+    "save",
     "saveAsTextFile",
     "saveAsSequenceFile",
     "saveAsObjectFile",
@@ -25,8 +26,14 @@ class DataLineageQueryExecutionListener()
     "foreach"
   )
 
-  def onSuccess(functionName: String, qe: QueryExecution, duration: Long) = {
+  def onSuccess(
+      functionName: String,
+      qe: QueryExecution,
+      duration: Long
+  ): Unit = {
+    val t0 = System.currentTimeMillis()
     if (lineageFunctions.contains(functionName)) {
+      qe.executedPlan.collectLeaves()
       lazy val lineage: JValue = visitor.visit(qe.analyzed)
       lazy val result: JValue = JObject(
         JField("user", JString(qe.sparkSession.sparkContext.sparkUser)) ::
@@ -50,13 +57,15 @@ class DataLineageQueryExecutionListener()
     } else {
       logger warn s" function $functionName ignored"
     }
+    val t1 = System.currentTimeMillis()
+    logger trace s"onSuccess duration: ${t1 - t0} ms"
   }
   def onFailure(
       functionName: String,
       qe: QueryExecution,
       ex: Exception
   ): Unit = {
-    logger error s"Exception during function ${functionName}, ${ex.toString}"
+    logger error s"Exception during function $functionName, ${ex.toString}"
     ex.printStackTrace()
   }
 }

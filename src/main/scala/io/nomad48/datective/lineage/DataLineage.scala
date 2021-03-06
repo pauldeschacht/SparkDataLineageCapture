@@ -25,7 +25,7 @@ import org.apache.spark.sql.sources.BaseRelation
 /**
   * The trait RelationVisitor defines the visitor functions for the different relations
   * Relations represent data with schema's: https://spark.apache.org/docs/2.3.0/api/scala/index.html#org.apache.spark.sql.sources.BaseRelation
-  * @tparam T
+  * @tparam T Generic that describes the result of the visitor
   */
 trait RelationVisitor[T] {
   def visit(r: BaseRelation): T = r match {
@@ -43,7 +43,7 @@ trait RelationVisitor[T] {
 /**
   * The trait ExpressionVisitor defines the visitor functions for the different types of Expressions
   * Relations represent data with schema's: https://spark.apache.org/docs/2.3.0/api/scala/index.html#org.apache.spark.sql.sources.BaseRelation
-  * @tparam T
+  * @tparam T Generic that describes the result of the visitor
   */
 trait ExpressionVisitor[T] {
   def visit(e: Expression): T = e match {
@@ -64,7 +64,7 @@ trait ExpressionVisitor[T] {
 
 /**
   * The trait DataLineageLogicalPlanVisitor defines the visitor functions for the logical plan
-  * @tparam T
+  * @tparam T Generic that describes the result of the visitor
   */
 trait DataLineageLogicalPlanVisitor[T] {
   def visit(p: LogicalPlan): T = p match {

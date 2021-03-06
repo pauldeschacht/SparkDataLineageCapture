@@ -1,9 +1,7 @@
 name := "SparkDataLineageCapture"
-version := "0.1"
+version := "0.2"
 
-// use 2.11.8 in case of Java8
-// use 2.11.12 in case of Java9+
-scalaVersion := "2.11.8"
+scalaVersion := "2.11.12"
 val sparkVersion = "2.3.0"
 
 resolvers ++= Seq(

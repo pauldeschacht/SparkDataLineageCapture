@@ -15,7 +15,7 @@ trait JDBCVisitor[T] {
     case r: JDBCRelation => visitJDBCRelation(r)
     case _ =>
       throw new Exception(
-        s"Unexpected BaseRelation type ${r} in the JDBC handler"
+        s"Unexpected BaseRelation type $r in the JDBC handler"
       )
   }
   def visitJDBCRelation(relation: JDBCRelation): T

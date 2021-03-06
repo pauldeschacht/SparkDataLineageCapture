@@ -18,10 +18,11 @@ class JDBCLineageJson extends JDBCVisitor[JValue] {
       .asScala
       .flatMap {
         _ match {
-          case key: String => {
-            val value: String = props.getProperty(key)
-            Some(JField(key, JString(value)))
-          }
+          case key: String =>
+            if (key.compareTo("password") == 0)
+              Some(JField(key, JString("****")))
+            else
+              Some(JField(key, JString(props.getProperty(key))))
           case _ => None
         }
       }
